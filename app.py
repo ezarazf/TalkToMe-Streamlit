@@ -5,7 +5,7 @@ import numpy as np
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
 
-# Add RTC configuration for STUN server
+# Konfigurasi STUN server
 RTC_CONFIGURATION = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
@@ -33,65 +33,76 @@ if start:
 if stop:
     st.session_state.run = False
 
-# Load your TorchScript model once
+# Load model
 @st.cache_resource
 def load_model():
-    m = torch.jit.load("SL-V1.torchscript", map_location="cpu")
-    m.eval()
-    return m
+    model = torch.jit.load("SL-V1.torchscript", map_location="cpu")
+    model.eval()
+    return model
 
 model = load_model()
 
-class_labels = ["A", "B", "C", "D", "E"]  # Replace with your actual labels
+# Ganti dengan label yang sesuai
+class_labels = ["A", "B", "C", "D", "E"]  # Contoh label
 
 class VideoProcessor(VideoProcessorBase):
-    def __init__(self) -> None:
+    def __init__(self):
         self.model = model
         self.labels = class_labels
         
     def recv(self, frame):
-        img_bgr = frame.to_ndarray(format="bgr24")
-        if st.session_state.run and self.model is not None:
-            # Pre-processing
-            img_resized = cv2.resize(img_bgr, (224, 224))
-            img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-            tensor = (
-                torch.from_numpy(img_rgb)
-                .permute(2, 0, 1)
-                .unsqueeze(0)
-                .float()
-                / 255.0
-            )
-
-            # Inference
-            with torch.no_grad():
-                out = self.model(tensor)[0]
-                probs = torch.nn.functional.softmax(out, dim=0)
-                conf, pred = torch.max(probs, 0)
+        img = frame.to_ndarray(format="bgr24")
+        
+        if st.session_state.run:
+            try:
+                # Preprocessing
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img_resized = cv2.resize(img_rgb, (224, 224))
+                
+                # Normalisasi (sesuaikan dengan preprocessing saat training)
+                img_normalized = img_resized / 255.0
+                mean = np.array([0.485, 0.456, 0.406])
+                std = np.array([0.229, 0.224, 0.225])
+                img_normalized = (img_normalized - mean) / std
+                
+                # Convert to tensor
+                tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
+                
+                # Inference
+                with torch.no_grad():
+                    outputs = self.model(tensor)
+                    probs = torch.nn.functional.softmax(outputs, dim=1)
+                    conf, pred = torch.max(probs, 1)
+                
+                # Get results
                 label = self.labels[pred.item()]
-                score = conf.item() * 100
+                confidence = conf.item() * 100
+                
+                # Draw prediction
+                cv2.putText(img, 
+                           f"{label} {confidence:.2f}%", 
+                           (20, 40), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 
+                           1, (0, 255, 0), 2)
+                
+                # Save to history
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                st.session_state.history.append({
+                    "image": img.copy(),
+                    "prediction": label,
+                    "confidence": confidence,
+                    "timestamp": ts
+                })
+                
+            except Exception as e:
+                st.error(f"Error dalam prediksi: {str(e)}")
+                cv2.putText(img, "ERROR", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        
+        return img
 
-            # Annotate frame
-            text = f"{label} {score:.1f}%"
-            cv2.putText(
-                img_bgr, text, (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
-            )
-
-            # Save to history
-            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.session_state.history.append({
-                "input_image": cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB),
-                "predicted_class": label,
-                "confidence_score": score,
-                "timestamp": ts
-            })
-
-        return img_bgr
-
-# Run WebRTC streamer with RTC configuration
+# WebRTC Streamer
 webrtc_streamer(
-    key="webrtc",
+    key="example",
     mode=WebRtcMode.SENDRECV,
     rtc_configuration=RTC_CONFIGURATION,
     video_processor_factory=VideoProcessor,
@@ -99,19 +110,15 @@ webrtc_streamer(
     async_processing=True,
 )
 
-# Display history
+# Tampilkan riwayat
 if st.session_state.history:
     st.subheader("Riwayat Prediksi:")
-    for i, item in enumerate(reversed(st.session_state.history), 1):
-        st.write(
-            f"**{i}.** Prediksi: {item['predicted_class']} "
-            f"({item['confidence_score']:.2f}%) "
-            f"pada {item['timestamp']}"
-        )
-        st.image(item["input_image"], use_column_width=True)
+    cols = st.columns(3)
+    for idx, entry in enumerate(reversed(st.session_state.history)):
+        with cols[idx % 3]:
+            st.image(entry["image"], use_column_width=True)
+            st.caption(f"{entry['timestamp']} - {entry['prediction']} ({entry['confidence']:.2f}%)")
 
-# Clear history
 if clear_history:
     st.session_state.history.clear()
-    st.success("✅ Riwayat prediksi telah dihapus.")
-    st.rerun()  # Changed from st.experimental_rerun()
+    st.rerun()
