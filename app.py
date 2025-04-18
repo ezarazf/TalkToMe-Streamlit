@@ -12,7 +12,7 @@ RTC_CONFIGURATION = RTCConfiguration({
 
 # Setup halaman
 st.set_page_config(layout="wide")
-st.title("Talk To Me")
+st.title("✋ Talk To Me: Pendeteksi Bahasa Isyarat")
 
 # Load model
 @st.cache_resource
@@ -26,7 +26,7 @@ class_labels = ["A", "B", "C", "D", "E"]
 
 # Video Processor
 class VideoProcessor(VideoProcessorBase):
-    def _init_(self):
+    def __init__(self):
         self.model = model
         self.latest_result = None
 
@@ -82,6 +82,8 @@ ctx = webrtc_streamer(
 # Tampilkan prediksi teks (opsional)
 if ctx.video_processor:
     result = ctx.video_processor.latest_result
-    if result:
+    if result is not None:
         st.markdown("### 🔍 Prediksi")
         st.info(f"{result['waktu']} – *{result['label']}* ({result['confidence']:.1f}%)")
+    else:
+        st.info("🧐 Prediksi masih dalam proses...")
