@@ -15,7 +15,7 @@ RTC_CONFIGURATION = RTCConfiguration({
 
 # Setup halaman
 st.set_page_config(layout="wide")
-st.title("Talk To Met")
+st.title("Talk To Me")
 
 # Load model
 @st.cache_resource
