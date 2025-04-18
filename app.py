@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
+import threading
+from queue import Queue
 
 # Konfigurasi STUN server
 RTC_CONFIGURATION = RTCConfiguration({
@@ -12,9 +14,9 @@ RTC_CONFIGURATION = RTCConfiguration({
 
 # Setup halaman
 st.set_page_config(layout="wide")
-st.title("Talk To Me")
+st.title("Talk To Me)")
 
-# Load model
+# Load model dengan cache
 @st.cache_resource
 def load_model():
     model = torch.jit.load("SL-V1.torchscript", map_location="cpu")
@@ -24,66 +26,125 @@ def load_model():
 model = load_model()
 class_labels = ["A", "B", "C", "D", "E"]
 
-# Video Processor
-class VideoProcessor(VideoProcessorBase):
+# System Resource Manager
+class ResourceManager:
     def __init__(self):
-        self.model = model
+        self.frame_queue = Queue(maxsize=2)  # Batasi antrian frame
         self.latest_result = None
+        self.lock = threading.Lock()
+        self.active = True
 
+    def update_result(self, result):
+        with self.lock:
+            self.latest_result = result
+
+    def get_result(self):
+        with self.lock:
+            return self.latest_result
+
+resource_manager = ResourceManager()
+
+# Video Processor yang dioptimalkan
+class EfficientVideoProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.resolution = (320, 240)  # Resolusi lebih rendah
+        self.frame_skip = 2  # Skip 1 dari 2 frame
+        self.frame_counter = 0
+        
     def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        h, w, _ = img.shape
+        if not resource_manager.active:
+            return frame
+        
+        self.frame_counter += 1
+        if self.frame_counter % self.frame_skip != 0:
+            return frame
+            
+        try:
+            img = frame.to_ndarray(format="bgr24")
+            img_small = cv2.resize(img, self.resolution)
+            
+            # Masukkan frame ke antrian
+            if resource_manager.frame_queue.qsize() < 2:
+                resource_manager.frame_queue.put(img_small)
+                
+        except Exception as e:
+            st.error(f"Frame processing error: {str(e)}")
+            
+        return frame
 
-        # Resize dan normalisasi
-        img_resized = cv2.resize(img, (224, 224))
-        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-        img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
-        tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
+# Background worker untuk inference
+def model_worker():
+    while resource_manager.active:
+        try:
+            if resource_manager.frame_queue.empty():
+                continue
+                
+            img = resource_manager.frame_queue.get()
+            
+            # Preprocessing
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+            tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
 
-        with torch.no_grad():
-            outputs = self.model(tensor)
-            probs = torch.nn.functional.softmax(outputs, dim=1)
-            conf, pred = torch.max(probs, 1)
+            # Inference
+            with torch.no_grad():
+                outputs = model(tensor)
+                probs = torch.nn.functional.softmax(outputs, dim=1)
+                conf, pred = torch.max(probs, 1)
 
-        label = class_labels[pred.item()]
-        confidence = conf.item() * 100
+            # Update hasil
+            result = {
+                "label": class_labels[pred.item()],
+                "confidence": conf.item() * 100,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            }
+            resource_manager.update_result(result)
+            
+        except Exception as e:
+            st.error(f"Inference error: {str(e)}")
 
-        # Simpan hasil prediksi
-        self.latest_result = {
-            "label": label,
-            "confidence": confidence,
-            "waktu": datetime.now().strftime("%H:%M:%S")
-        }
-
-        # Tambahkan overlay kotak + label di frame
-        box_w, box_h = 200, 200
-        x1 = w // 2 - box_w // 2
-        y1 = h // 2 - box_h // 2
-        x2 = x1 + box_w
-        y2 = y1 + box_h
-
-        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        label_text = f"{label} ({confidence:.1f}%)"
-        cv2.putText(img, label_text, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-        return img  # Pastikan mengembalikan frame hasil edit
+# Mulai worker thread
+threading.Thread(target=model_worker, daemon=True).start()
 
 # Stream video
 ctx = webrtc_streamer(
-    key="demo",
+    key="optimized_server",
     mode=WebRtcMode.SENDRECV,
     rtc_configuration=RTC_CONFIGURATION,
-    video_processor_factory=VideoProcessor,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=False,  # Coba dulu dengan False agar lebih stabil
+    video_processor_factory=EfficientVideoProcessor,
+    media_stream_constraints={
+        "video": {
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720},
+            "frameRate": 15  # Frame rate lebih rendah
+        },
+        "audio": False
+    },
+    async_processing=True,
 )
 
-# Tampilkan prediksi teks (opsional)
-if ctx.video_processor:
-    result = ctx.video_processor.latest_result
-    if result is not None:
-        st.markdown("### 🔍 Prediksi")
-        st.info(f"{result['waktu']} – *{result['label']}* ({result['confidence']:.1f}%)")
-    else:
-        st.info("🧐 Prediksi masih dalam proses...")
+# Tampilkan UI
+result_placeholder = st.empty()
+server_status = st.sidebar.empty()
+
+# System monitor
+while True:
+    try:
+        # Update tampilan
+        result = resource_manager.get_result()
+        if result:
+            result_placeholder.info(
+                f"🕒 {result['timestamp']} - "
+                f"**{result['label']}** "
+                f"(Confidence: {result['confidence']:.1f}%)"
+            )
+            
+        # System status
+        server_status.markdown(f"""
+        **🖥️ Server Status**
+        - Frame Queue: {resource_manager.frame_queue.qsize()}
+        - Active Threads: {threading.active_count()}
+        """)
+        
+    except Exception as e:
+        st.error(f"UI update error: {str(e)}")
