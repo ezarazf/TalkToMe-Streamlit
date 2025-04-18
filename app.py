@@ -5,13 +5,10 @@ import numpy as np
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
 
-# Konfigurasi WebRTC
+# Konfigurasi STUN server
 RTC_CONFIGURATION = RTCConfiguration({
     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
 })
-
-st.set_page_config(layout="wide")
-st.title("Talk To Me")
 
 # Load model
 @st.cache_resource
@@ -23,8 +20,8 @@ def load_model():
 model = load_model()
 class_labels = ["A", "B", "C", "D", "E"]
 
-# Video processor
-class SignLanguageProcessor(VideoProcessorBase):
+# Video Processor
+class VideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.model = model
         self.latest_result = None
@@ -47,14 +44,14 @@ class SignLanguageProcessor(VideoProcessorBase):
         label = class_labels[pred.item()]
         confidence = conf.item() * 100
 
-        # Simpan prediksi
+        # Simpan hasil prediksi
         self.latest_result = {
             "label": label,
             "confidence": confidence,
             "waktu": datetime.now().strftime("%H:%M:%S")
         }
 
-        # Gambar kotak + label di atas frame
+        # Tambahkan overlay kotak + label di frame
         box_w, box_h = 200, 200
         x1 = w // 2 - box_w // 2
         y1 = h // 2 - box_h // 2
@@ -62,29 +59,29 @@ class SignLanguageProcessor(VideoProcessorBase):
         y2 = y1 + box_h
 
         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        text = f"{label} ({confidence:.1f}%)"
-        (text_w, text_h), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)
-        text_x = x1 + (box_w - text_w) // 2
-        text_y = y1 - 10
+        label_text = f"{label} ({confidence:.1f}%)"
+        cv2.putText(img, label_text, (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-        cv2.putText(img, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9, (0, 255, 0), 2, cv2.LINE_AA)
+        return img  # Pastikan mengembalikan frame hasil edit
 
-        return img
+# Setup halaman
+st.set_page_config(layout="wide")
+st.title("✋ Talk To Me: Pendeteksi Bahasa Isyarat")
 
-# Jalankan WebRTC
+# Stream video
 ctx = webrtc_streamer(
-    key="sign-lang-stream",
+    key="demo",
     mode=WebRtcMode.SENDRECV,
     rtc_configuration=RTC_CONFIGURATION,
-    video_processor_factory=SignLanguageProcessor,
+    video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,
+    async_processing=False,  # Coba dulu dengan False agar lebih stabil
 )
 
-# Tampilkan teks prediksi di luar video (opsional)
+# Tampilkan prediksi teks (opsional)
 if ctx.video_processor:
     result = ctx.video_processor.latest_result
     if result:
-        st.markdown("### 🧾 Hasil Prediksi Terkini")
-        st.info(f"🕒 {result['waktu']} → **{result['label']}** ({result['confidence']:.1f}%)")
+        st.markdown("### 🔍 Prediksi")
+        st.info(f"{result['waktu']} – **{result['label']}** ({result['confidence']:.1f}%)")
