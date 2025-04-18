@@ -73,7 +73,7 @@ class SafeVideoProcessor(VideoProcessorBase):
             
             tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
             
-             with torch.no_grad():
+            with torch.no_grad():
             outputs = self.model(tensor)
             print("Model outputs:", outputs)  # Debug model output
             probs = torch.nn.functional.softmax(outputs, dim=1)
