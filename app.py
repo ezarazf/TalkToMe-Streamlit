@@ -110,7 +110,8 @@ webrtc_ctx = webrtc_streamer(
     media_stream_constraints={
         "video": {
             "width": {"ideal": 1280},
-            "height": {"ideal": 720}
+            "height": {"ideal": 720},
+            "frameRate": {"ideal": 15}
         },
         "audio": False
     },
