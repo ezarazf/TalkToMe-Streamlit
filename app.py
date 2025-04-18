@@ -16,7 +16,7 @@ RTC_CONFIGURATION = RTCConfiguration({
 
 # ————————————————————————————————————————————————
 st.set_page_config(layout="wide")
-st.title("Talk To Me – WebRTC + TorchScript")
+st.title("Talk To Me")
 
 # Session state management
 class SessionState:
