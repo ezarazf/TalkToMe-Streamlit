@@ -68,7 +68,7 @@ class VideoProcessor(VideoProcessorBase):
         return img  # Pastikan mengembalikan frame hasil edit
 
 # Setup halaman
-st.title("✋ Talk To Me: Pendeteksi Bahasa Isyarat")
+st.title("Talk To Me")
 
 # Stream video
 ctx = webrtc_streamer(
