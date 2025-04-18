@@ -19,7 +19,7 @@ def load_model():
     return model
 
 model = load_model()
-class_labels = ["A", "B", "C", "D", "E"]  # Sesuaikan dengan label model Anda
+class_labels = ["A", "B", "C"]  # Sesuaikan dengan label model Anda
 
 class RealTimeProcessor(VideoProcessorBase):
     def __init__(self):
