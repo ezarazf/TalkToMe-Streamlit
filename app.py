@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
 
+st.set_page_config(layout="wide")
+
 # Konfigurasi STUN
 RTC_CONFIGURATION = RTCConfiguration({
     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
@@ -93,7 +95,6 @@ class RealTimeProcessor(VideoProcessorBase):
         return img
 
 # UI
-st.set_page_config(layout="wide")
 st.title("Sign Language Recognition - Realtime")
 
 with st.sidebar:
