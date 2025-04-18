@@ -5,6 +5,8 @@ import numpy as np
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
 
+st.set_page_config(layout="wide")
+
 # Konfigurasi STUN server
 RTC_CONFIGURATION = RTCConfiguration({
     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
@@ -66,7 +68,6 @@ class VideoProcessor(VideoProcessorBase):
         return img  # Pastikan mengembalikan frame hasil edit
 
 # Setup halaman
-st.set_page_config(layout="wide")
 st.title("✋ Talk To Me: Pendeteksi Bahasa Isyarat")
 
 # Stream video
