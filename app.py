@@ -79,7 +79,8 @@ ctx = webrtc_streamer(
     rtc_configuration=RTC_CONFIGURATION,
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
-    async_processing=False,  # Coba dulu dengan False agar lebih stabil
+    async_processing=True,  # Mengaktifkan pemrosesan asinkron
+)l
 )
 
 # Tampilkan prediksi teks (opsional)
