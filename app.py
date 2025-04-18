@@ -9,7 +9,11 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RT
 RTC_CONFIGURATION = RTCConfiguration({
     "iceServers": [
         {"urls": ["stun:stun.l.google.com:19302"]},
-        {"urls": ["stun:stun1.l.google.com:19302"]},# Alternatif server STUN
+        {
+            "urls": ["turn:openrelay.metered.ca:80"],
+            "username": "openrelayproject",
+            "credential": "openrelayproject"
+        }
     ]
 })
 
