@@ -51,7 +51,7 @@ def load_model():
     return model
 
 model = load_model()
-class_labels = ["A", "B", "C", "D", "E"]
+class_labels = ["A", "B", "C"]
 
 # Video processor with connection cleanup
 class SafeVideoProcessor(VideoProcessorBase):
@@ -74,12 +74,9 @@ class SafeVideoProcessor(VideoProcessorBase):
             tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
             
             with torch.no_grad():
-            outputs = self.model(tensor)
-            print("Model outputs:", outputs)  # Debug model output
-            probs = torch.nn.functional.softmax(outputs, dim=1)
-            conf, pred = torch.max(probs, 1)
-        
-            print(f"Prediction: {class_labels[pred.item()]} ({conf.item():.2f})")  # Debug predictio
+                outputs = self.model(tensor)
+                probs = torch.nn.functional.softmax(outputs, dim=1)
+                conf, pred = torch.max(probs, 1)
             
             label = class_labels[pred.item()]
             confidence = conf.item() * 100
@@ -121,16 +118,12 @@ else:
 
 # Display predictions
 if state.history:
-    st.subheader("📜 Hasil Prediksi Real-Time")
-    st.write("Jumlah hasil tersimpan:", len(state.history))  # Debug jumlah hasil
-    
+    st.subheader("Hasil Prediksi")
     cols = st.columns(3)
     for idx, entry in enumerate(reversed(state.history[-3:])):
         with cols[idx % 3]:
-            st.image(
-                entry["frame"], 
-                caption=f"🕒 {entry['waktu']} | 👆 {entry['label']} ({entry['confidence']:.1f}%)",
-                use_column_width=True
-            )
-else:
-    st.warning("Belum ada hasil prediksi. Pastikan: 1. Kamera aktif 2. Tangan terlihat jelas 3. Model terload dengan benar")
+            st.image(entry["frame"], caption=f"{entry['waktu']} - {entry['label']} ({entry['confidence']:.1f}%)")
+
+if clear_history:
+    state.history.clear()
+    st.rerun()
