@@ -12,7 +12,7 @@ RTC_CONFIGURATION = RTCConfiguration(
 
 # ————————————————————————————————————————————————
 st.set_page_config(layout="wide")
-st.title("Talk To Me – WebRTC + TorchScript")
+st.title("Talk To Me")
 
 # Sidebar controls
 with st.sidebar:
