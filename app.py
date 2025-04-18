@@ -7,7 +7,10 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RT
 
 # Konfigurasi STUN server
 RTC_CONFIGURATION = RTCConfiguration({
-    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    "iceServers": [
+        {"urls": ["stun:stun.l.google.com:19302"]},
+        {"urls": ["stun:stun1.l.google.com:19302"]}  # Alternatif server STUN
+    ]
 })
 
 # Setup halaman
