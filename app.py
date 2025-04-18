@@ -80,7 +80,7 @@ ctx = webrtc_streamer(
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,  # Mengaktifkan pemrosesan asinkron
-)l
+)
 )
 
 # Tampilkan prediksi teks (opsional)
