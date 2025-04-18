@@ -12,8 +12,8 @@ st.title("Talk To Me")
 # SIDEBAR
 with st.sidebar:
     st.title("Kontrol")
-    st.info("💡 Setelah tekan 'Start', harap langsung menunjukan tangan kamu ke kamera.")
-    st.info("💡 Klik 'Stop' terlebih dahulu sebelum 'Remove History")
+    st.info("\U0001F4A1 Setelah tekan 'Start', harap langsung menunjukan tangan kamu ke kamera.")
+    st.info("\U0001F4A1 Klik 'Stop' terlebih dahulu sebelum 'Remove History")
     start = st.button("▶️ Start")
     stop = st.button("⏹️ Stop")
     clear_history = st.button("🧹 Remove History")
@@ -21,8 +21,12 @@ with st.sidebar:
 # Load model
 @st.cache_resource
 def load_model_cached():
-    model = YOLO("SL-V1.pt")
-    return model
+    try:
+        model = YOLO("SL-V1.pt")
+        return model
+    except Exception as e:
+        st.error(f"Gagal memuat model: {e}")
+        return None
 
 model = load_model_cached()
 
@@ -42,7 +46,7 @@ frame_placeholder = st.empty()
 prediction_placeholder = st.empty()
 
 # Prediksi
-if st.session_state.run:
+if st.session_state.run and model is not None:
     cap = cv2.VideoCapture(0)
 
     ret, frame = cap.read()
@@ -57,28 +61,32 @@ if st.session_state.run:
         results = model(img)
 
         # Ambil label deteksi paling yakin dan confidence score
-        labels = results[0].boxes.cls.cpu().numpy() if results[0].boxes is not None else []
-        confidences = results[0].boxes.conf.cpu().numpy() if results[0].boxes.conf is not None else []
-        names = model.names
-        
-        if len(labels):
-            # Ambil label dengan confidence tertinggi
-            max_confidence_index = np.argmax(confidences)
-            hasil = names[int(labels[max_confidence_index])]
-            confidence_score = confidences[max_confidence_index] * 100 
+        boxes = results[0].boxes
+        if boxes is not None:
+            labels = boxes.cls.cpu().numpy()
+            confidences = boxes.conf.cpu().numpy()
+            names = model.names
 
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            prediction_placeholder.success(f"🧠 Prediksi: {hasil} (Confidence: {confidence_score:.2f}%) - {timestamp}")
+            if len(labels):
+                # Ambil label dengan confidence tertinggi
+                max_confidence_index = np.argmax(confidences)
+                hasil = names[int(labels[max_confidence_index])]
+                confidence_score = confidences[max_confidence_index] * 100 
 
-            # Simpan hasil prediksi ke riwayat
-            st.session_state.history.append({
-                "input_image": frame_rgb,  # Simpan gambar input
-                "predicted_class": hasil,   # Simpan hasil prediksi
-                "confidence_score": confidence_score,  # Simpan confidence score
-                "timestamp": timestamp      # Simpan timestamp
-            })
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                prediction_placeholder.success(f"🧠 Prediksi: {hasil} (Confidence: {confidence_score:.2f}%) - {timestamp}")
+
+                # Simpan hasil prediksi ke riwayat
+                st.session_state.history.append({
+                    "input_image": frame_rgb,
+                    "predicted_class": hasil,
+                    "confidence_score": confidence_score,
+                    "timestamp": timestamp
+                })
+            else:
+                prediction_placeholder.info("Belum terdeteksi")
         else:
-            prediction_placeholder.info("Belum terdeteksi")
+            prediction_placeholder.info("Belum ada hasil deteksi")
 
     cap.release()
 
