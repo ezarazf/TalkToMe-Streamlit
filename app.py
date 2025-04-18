@@ -19,16 +19,9 @@ with st.sidebar:
     clear_history = st.button("🧹 Remove History")
 
 # Load model
-@st.cache_resource
-def load_model_cached():
-    try:
-        model = YOLO("SL-V1.pt")
-        return model
-    except Exception as e:
-        st.error(f"Gagal memuat model: {e}")
-        return None
+model = YOLO("SL-V1.pt")
+model.export(format="onnx")  # atau format="torchscript"
 
-model = load_model_cached()
 
 # Menyimpan status dan riwayat prediksi
 if "run" not in st.session_state:
