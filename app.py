@@ -3,11 +3,10 @@ import cv2
 import torch
 from PIL import Image
 import numpy as np
-from ultralytics import YOLO
 from datetime import datetime
 
 st.set_page_config(layout="wide")
-st.title("🧠 Talk To Me")
+st.title("Talk To Me - TorchScript Version")
 
 # SIDEBAR
 with st.sidebar:
@@ -18,17 +17,29 @@ with st.sidebar:
     stop = st.button("⏹️ Stop")
     clear_history = st.button("🧹 Remove History")
 
-# Load model
+# Load TorchScript model
 @st.cache_resource
-model = YOLO("yolo11n.torchscript")
+def load_model_cached():
+    try:
+        model = torch.jit.load("SL-V1.torchscript", map_location=torch.device("cpu"))
+        model.eval()
+        return model
+    except Exception as e:
+        st.error(f"Gagal memuat model: {e}")
+        return None
 
-# State
+model = load_model_cached()
+
+# Label class - Ganti sesuai label model kamu
+class_labels = ["A", "B", "C"]  # ← Ganti ini
+
+# Menyimpan status dan riwayat prediksi
 if "run" not in st.session_state:
     st.session_state.run = False
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# Kontrol
+# Menangani kontrol untuk mulai dan berhenti
 if start:
     st.session_state.run = True
 if stop:
@@ -41,50 +52,45 @@ prediction_placeholder = st.empty()
 if st.session_state.run and model is not None:
     cap = cv2.VideoCapture(0)
     ret, frame = cap.read()
+
     if not ret:
         st.warning("Kamera tidak terdeteksi.")
     else:
+        # Preprocessing
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image_resized = cv2.resize(frame_rgb, (224, 224))  # Sesuaikan ukuran dengan modelmu
+        tensor = torch.from_numpy(image_resized).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+
+        # Inference
+        with torch.no_grad():
+            output = model(tensor)
+            probs = torch.nn.functional.softmax(output[0], dim=0)
+            confidence_score, predicted_class = torch.max(probs, 0)
+            hasil = class_labels[predicted_class.item()]
+            score = confidence_score.item() * 100
+
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        prediction_placeholder.success(f"🧠 Prediksi: {hasil} (Confidence: {score:.2f}%) - {timestamp}")
         frame_placeholder.image(frame_rgb, channels="RGB")
 
-        # Deteksi
-        img = Image.fromarray(frame_rgb)
-        results = model(img)
-
-        boxes = results[0].boxes
-        if boxes is not None and boxes.cls is not None:
-            labels = boxes.cls.cpu().numpy()
-            confidences = boxes.conf.cpu().numpy()
-            names = model.names
-
-            if len(labels):
-                max_conf_index = np.argmax(confidences)
-                hasil = names[int(labels[max_conf_index])]
-                confidence_score = confidences[max_conf_index] * 100
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-                prediction_placeholder.success(f"🧠 Prediksi: {hasil} (Confidence: {confidence_score:.2f}%) - {timestamp}")
-                st.session_state.history.append({
-                    "input_image": frame_rgb,
-                    "predicted_class": hasil,
-                    "confidence_score": confidence_score,
-                    "timestamp": timestamp
-                })
-            else:
-                prediction_placeholder.info("🖐 Belum terdeteksi.")
-        else:
-            prediction_placeholder.info("📷 Tidak ada hasil deteksi.")
+        # Simpan riwayat
+        st.session_state.history.append({
+            "input_image": frame_rgb,
+            "predicted_class": hasil,
+            "confidence_score": score,
+            "timestamp": timestamp
+        })
 
     cap.release()
 
-# Riwayat
+# Riwayat prediksi
 if st.session_state.history:
     st.subheader("Riwayat Prediksi:")
     for i, item in enumerate(reversed(st.session_state.history), 1):
         st.write(f"**{i}.** Prediksi: {item['predicted_class']} dengan Confidence: {item['confidence_score']:.2f}% pada {item['timestamp']}")
         st.image(item['input_image'], caption=f"Gambar {i}", use_container_width=True)
 
-# Hapus Riwayat
+# Menghapus semua riwayat
 if clear_history:
     st.session_state.history.clear()
     st.success("✅ Semua riwayat prediksi berhasil dihapus!")
