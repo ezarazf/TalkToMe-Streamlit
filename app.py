@@ -7,10 +7,7 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RT
 
 # Konfigurasi STUN server
 RTC_CONFIGURATION = RTCConfiguration({
-    "iceServers": [
-        {"urls": ["stun:stun.l.google.com:19302"]},
-        {"urls": ["stun:stun1.l.google.com:19302"]}
-    ]
+    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
 })
 
 # Setup halaman
@@ -79,7 +76,7 @@ ctx = webrtc_streamer(
     rtc_configuration=RTC_CONFIGURATION,
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,  # Mengaktifkan pemrosesan asinkron
+    async_processing=False,  # Coba dulu dengan False agar lebih stabil
 )
 
 # Tampilkan prediksi teks (opsional)
