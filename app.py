@@ -10,6 +10,10 @@ RTC_CONFIGURATION = RTCConfiguration({
     "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
 })
 
+# Setup halaman
+st.set_page_config(layout="wide")
+st.title("Talk To Me")
+
 # Load model
 @st.cache_resource
 def load_model():
@@ -64,10 +68,6 @@ class VideoProcessor(VideoProcessorBase):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
         return img  # Pastikan mengembalikan frame hasil edit
-
-# Setup halaman
-st.set_page_config(layout="wide")
-st.title("✋ Talk To Me: Pendeteksi Bahasa Isyarat")
 
 # Stream video
 ctx = webrtc_streamer(
