@@ -3,7 +3,12 @@ import torch
 import cv2
 import numpy as np
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
+
+# Add RTC configuration for STUN server
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
 # ————————————————————————————————————————————————
 st.set_page_config(layout="wide")
@@ -37,15 +42,17 @@ def load_model():
 
 model = load_model()
 
-# Replace these labels with yours
-class_labels = ["A", "B", "C", "D", "E"]  
+class_labels = ["A", "B", "C", "D", "E"]  # Replace with your actual labels
 
-# VideoProcessor untuk setiap frame
 class VideoProcessor(VideoProcessorBase):
+    def __init__(self) -> None:
+        self.model = model
+        self.labels = class_labels
+        
     def recv(self, frame):
         img_bgr = frame.to_ndarray(format="bgr24")
-        if st.session_state.run and model is not None:
-            # Pre‑processing untuk model
+        if st.session_state.run and self.model is not None:
+            # Pre-processing
             img_resized = cv2.resize(img_bgr, (224, 224))
             img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
             tensor = (
@@ -58,10 +65,10 @@ class VideoProcessor(VideoProcessorBase):
 
             # Inference
             with torch.no_grad():
-                out = model(tensor)[0]  # asumsikan ini klasifikasi
+                out = self.model(tensor)[0]
                 probs = torch.nn.functional.softmax(out, dim=0)
                 conf, pred = torch.max(probs, 0)
-                label = class_labels[pred.item()]
+                label = self.labels[pred.item()]
                 score = conf.item() * 100
 
             # Annotate frame
@@ -71,7 +78,7 @@ class VideoProcessor(VideoProcessorBase):
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
             )
 
-            # Simpan ke history
+            # Save to history
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             st.session_state.history.append({
                 "input_image": cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB),
@@ -82,16 +89,17 @@ class VideoProcessor(VideoProcessorBase):
 
         return img_bgr
 
-# Jalankan WebRTC streamer
+# Run WebRTC streamer with RTC configuration
 webrtc_streamer(
     key="webrtc",
     mode=WebRtcMode.SENDRECV,
+    rtc_configuration=RTC_CONFIGURATION,
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
 
-# Tampilkan riwayat
+# Display history
 if st.session_state.history:
     st.subheader("Riwayat Prediksi:")
     for i, item in enumerate(reversed(st.session_state.history), 1):
@@ -102,7 +110,8 @@ if st.session_state.history:
         )
         st.image(item["input_image"], use_column_width=True)
 
-# Hapus riwayat
+# Clear history
 if clear_history:
     st.session_state.history.clear()
     st.success("✅ Riwayat prediksi telah dihapus.")
+    st.rerun()  # Changed from st.experimental_rerun()
