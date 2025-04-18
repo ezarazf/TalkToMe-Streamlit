@@ -109,8 +109,8 @@ webrtc_ctx = webrtc_streamer(
     video_processor_factory=RealTimeProcessor,
     media_stream_constraints={
         "video": {
-            "width": {"ideal": 640},
-            "height": {"ideal": 480}
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720}
         },
         "audio": False
     },
