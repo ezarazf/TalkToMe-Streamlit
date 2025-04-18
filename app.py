@@ -5,39 +5,45 @@ import numpy as np
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
 
-# Konfigurasi STUN
-RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-)
+# Improved STUN configuration with fallback servers
+RTC_CONFIGURATION = RTCConfiguration({
+    "iceServers": [
+        {"urls": ["stun:stun.l.google.com:19302"]},
+        {"urls": ["stun:stun1.l.google.com:19302"]},
+        {"urls": ["stun:stun2.l.google.com:19302"]}
+    ]
+})
 
 # ————————————————————————————————————————————————
 st.set_page_config(layout="wide")
-st.title("Talk To Me")
+st.title("Talk To Me – WebRTC + TorchScript")
+
+# Session state management
+class SessionState:
+    def __init__(self):
+        self.run = False
+        self.history = []
+        self.webrtc_ctx = None
+
+def get_state() -> SessionState:
+    if "state" not in st.session_state:
+        st.session_state.state = SessionState()
+    return st.session_state.state
+
+state = get_state()
 
 # Sidebar controls
 with st.sidebar:
     st.title("Kontrol")
     st.info("💡 Klik ‘Start’ untuk mulai kamera, ‘Stop’ untuk menghentikan.")
-    start = st.button("▶️ Start")
-    stop = st.button("⏹️ Stop")
+    if st.button("▶️ Start"):
+        state.run = True
+    if st.button("⏹️ Stop"):
+        state.run = False
+        state.webrtc_ctx = None  # Force cleanup
     clear_history = st.button("🧹 Hapus Riwayat")
 
-# Session state
-if "run" not in st.session_state:
-    st.session_state.run = False
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "show_history" not in st.session_state:
-    st.session_state.show_history = False
-
-# Toggle state
-if start:
-    st.session_state.run = True
-    st.session_state.show_history = True  # Tampilkan riwayat saat start
-if stop:
-    st.session_state.run = False
-
-# Load model
+# Model loading
 @st.cache_resource
 def load_model():
     model = torch.jit.load("SL-V1.torchscript", map_location="cpu")
@@ -45,86 +51,79 @@ def load_model():
     return model
 
 model = load_model()
+class_labels = ["A", "B", "C", "D", "E"]
 
-class_labels = ["A", "B", "C", "D", "E"]  # Sesuaikan dengan label Anda
-
-class VideoProcessor(VideoProcessorBase):
+# Video processor with connection cleanup
+class SafeVideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.model = model
-        self.labels = class_labels
+        self.active = True
         
     def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        
-        if st.session_state.run:
-            # Preprocessing
+        if not self.active or not state.run:
+            return frame.to_ndarray(format="bgr24")
+            
+        try:
+            img = frame.to_ndarray(format="bgr24")
             img_resized = cv2.resize(img, (224, 224))
             img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
             
-            # Normalisasi
-            img_normalized = img_rgb / 255.0
-            img_normalized = (img_normalized - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+            # Normalization
+            img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
             
-            # Convert to tensor
             tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
             
-            # Inference
             with torch.no_grad():
                 outputs = self.model(tensor)
                 probs = torch.nn.functional.softmax(outputs, dim=1)
                 conf, pred = torch.max(probs, 1)
             
-            # Get results
-            label = self.labels[pred.item()]
+            label = class_labels[pred.item()]
             confidence = conf.item() * 100
             
-            # Anotasi frame
-            cv2.putText(img, 
-                       f"{label} {confidence:.1f}%", 
-                       (20, 40), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 
-                       1, (0, 255, 0), 2)
+            cv2.putText(img, f"{label} {confidence:.1f}%", (20, 40), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             
-            # Simpan ke riwayat
-            ts = datetime.now().strftime("%H:%M:%S")
-            st.session_state.history.append({
-                "waktu": ts,
+            state.history.append({
+                "waktu": datetime.now().strftime("%H:%M:%S"),
                 "label": label,
                 "confidence": confidence,
                 "frame": img.copy()
             })
             
-            # Trigger re-render
-            st.experimental_rerun()
-        
-        return img
+            return img
+            
+        except Exception as e:
+            st.error(f"Prediction error: {str(e)}")
+            self.active = False
+            return frame.to_ndarray(format="bgr24")
 
-# Tampilkan WebRTC
-webrtc_ctx = webrtc_streamer(
-    key="example",
-    mode=WebRtcMode.SENDRECV,
-    rtc_configuration=RTC_CONFIGURATION,
-    video_processor_factory=VideoProcessor,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,
-)
+    def on_ended(self):
+        self.active = False
 
-# Tampilkan hasil di bawah WebRTC
-if st.session_state.show_history:
+# WebRTC component management
+if state.run:
+    state.webrtc_ctx = webrtc_streamer(
+        key="sign-language",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTC_CONFIGURATION,
+        video_processor_factory=SafeVideoProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
+else:
+    if state.webrtc_ctx:
+        state.webrtc_ctx.stop()
+    state.webrtc_ctx = None
+
+# Display predictions
+if state.history:
     st.subheader("📜 Hasil Prediksi Real-Time")
-    
-    # Buat container untuk hasil
-    result_container = st.container()
-    
-    # Tampilkan 3 hasil terbaru secara horizontal
-    if st.session_state.history:
-        cols = result_container.columns(3)
-        for idx, entry in enumerate(reversed(st.session_state.history[-3:])):
-            with cols[idx]:
-                st.image(entry["frame"], caption=f"🕒 {entry['waktu']} | 👆 {entry['label']} ({entry['confidence']:.1f}%)")
+    cols = st.columns(3)
+    for idx, entry in enumerate(reversed(state.history[-3:])):
+        with cols[idx % 3]:
+            st.image(entry["frame"], caption=f"{entry['waktu']} - {entry['label']} ({entry['confidence']:.1f}%)")
 
-# Hapus riwayat
 if clear_history:
-    st.session_state.history.clear()
-    st.success("Riwayat telah dihapus")
+    state.history.clear()
     st.rerun()
