@@ -1,91 +1,97 @@
 import streamlit as st
-from streamlit_webrtc import VideoProcessorBase, WebRtcMode, webrtc_streamer
-import cv2
-import numpy as np
-from PIL import Image
-from datetime import datetime
 import torch
-from ultralytics import YOLO
+import numpy as np
+import cv2
+from datetime import datetime
+from PIL import Image
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 st.set_page_config(layout="wide")
-st.title("Talk To Me")
+st.title("Talk To Me - WebRTC Version")
 
-# Load model YOLO
+# Sidebar
+with st.sidebar:
+    st.title("Kontrol")
+    st.info("💡 Setelah tekan 'Start', harap langsung tunjukkan tangan kamu ke kamera.")
+    st.info("💡 Klik 'Stop' terlebih dahulu sebelum 'Remove History'")
+    start = st.button("▶️ Start")
+    stop = st.button("⏹️ Stop")
+    clear_history = st.button("🧹 Remove History")
+
+# Load TorchScript model
 @st.cache_resource
-def load_model_cached():
-    model = YOLO("SL-V1.pt")  # Ubah ke model yang sesuai
+def load_model():
+    model = torch.jit.load("SL-V1.torchscript", map_location="cpu")
+    model.eval()
     return model
 
-model = load_model_cached()
+model = load_model()
 
-# Menyimpan status dan riwayat prediksi
+# Session states
 if "run" not in st.session_state:
     st.session_state.run = False
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# SIDEBAR
-with st.sidebar:
-    st.title("Kontrol")
-    st.info("💡 Setelah tekan 'Start', harap langsung menunjukan tangan kamu ke kamera.")
-    start = st.button("▶️ Start")
-    stop = st.button("⏹️ Stop")
-    clear_history = st.button("🧹 Remove History")
-
-# Video stream handler dengan callback
-class VideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.run = False
-
-    def recv(self, frame):
-        if self.run:
-            # Ambil frame sebagai gambar
-            img = frame.to_image()
-            img_rgb = np.array(img)
-
-            # Deteksi dengan model YOLO
-            results = model(img)
-            labels = results[0].boxes.cls.cpu().numpy() if results[0].boxes is not None else []
-            confidences = results[0].boxes.conf.cpu().numpy() if results[0].boxes.conf is not None else []
-            names = model.names
-
-            if len(labels):
-                max_confidence_index = np.argmax(confidences)
-                hasil = names[int(labels[max_confidence_index])]
-                confidence_score = confidences[max_confidence_index] * 100
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-                # Simpan riwayat
-                st.session_state.history.append({
-                    "predicted_class": hasil,
-                    "confidence_score": confidence_score,
-                    "timestamp": timestamp
-                })
-
-                # Mengupdate tampilan
-                frame = cv2.putText(img_rgb, f"{hasil} ({confidence_score:.2f}%)", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-            return frame
-
-        return frame
-
-# WebRTC stream
-webrtc_streamer(
-    key="sign-language-app",
-    mode=WebRtcMode.SENDRECV,
-    video_processor_factory=VideoProcessor,
-    async_processing=True,
-    rtc_configuration={"iceServers": [{"urls": "stun:stun.l.google.com:19302"}]},
-)
-
-# Kontrol Start/Stop
 if start:
     st.session_state.run = True
 if stop:
     st.session_state.run = False
 
-# Riwayat Prediksi
+frame_placeholder = st.empty()
+prediction_placeholder = st.empty()
+
+# Deteksi tangan (dummy example)
+def detect(model, frame: np.ndarray):
+    img = cv2.resize(frame, (640, 640))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    tensor = torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+    with torch.no_grad():
+        out = model(tensor)[0]
+    # Misal: jika ada deteksi
+    if out is not None and out.shape[0] > 0:
+        return "Tangan", 0.98
+    else:
+        return None, None
+
+# Callback untuk tiap frame WebRTC
+def video_frame_callback(frame):
+    img_bgr = frame.to_ndarray(format="bgr24")
+    if st.session_state.run and model is not None:
+        label, conf = detect(model, img_bgr)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if label:
+            prediction_placeholder.success(f"🧠 Prediksi: {label} (Confidence: {conf*100:.2f}%) - {timestamp}")
+            st.session_state.history.append({
+                "input_image": cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB),
+                "predicted_class": label,
+                "confidence_score": conf*100,
+                "timestamp": timestamp
+            })
+        else:
+            prediction_placeholder.info("Belum terdeteksi.")
+    # kembalikan frame agar muncul di browser
+    return frame
+
+# Jalankan WebRTC streamer
+webrtc_ctx = webrtc_streamer(
+    key="video-stream",
+    mode=WebRtcMode.SENDRECV,
+    video_frame_callback=video_frame_callback,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
+)
+
+# Riwayat prediksi
 if st.session_state.history:
     st.subheader("Riwayat Prediksi:")
     for i, item in enumerate(reversed(st.session_state.history), 1):
-        st.write(f"**{i}.** Prediksi: {item['predicted_class']} dengan Confidence: {item['confidence_score']:.2f}% pada {item['timestamp']}")
+        st.write(f"*{i}.* Prediksi: {item['predicted_class']} "
+                  f"dengan Confidence: {item['confidence_score']:.2f}% "
+                  f"pada {item['timestamp']}")
+        st.image(item['input_image'], use_container_width=True)
+
+# Hapus riwayat
+if clear_history:
+    st.session_state.history.clear()
+    st.success("✅ Semua riwayat berhasil dihapus!")
