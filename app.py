@@ -20,21 +20,7 @@ with st.sidebar:
 
 # Load model
 @st.cache_resource
-def load_model_cached():
-    try:
-        model = YOLO("SL-V1.pt")
-        return model
-    except Exception as e:
-        st.error(f"Gagal memuat model: {e}")
-        st.warning("🔁 Menggunakan model cadangan 'yolov8n.pt'")
-        try:
-            model = YOLO("yolov8n.pt")  # model umum dari Ultralytics
-            return model
-        except Exception as e:
-            st.error(f"Gagal memuat model cadangan: {e}")
-            return None
-
-model = load_model_cached()
+model = YOLO("yolo11n.torchscript")
 
 # State
 if "run" not in st.session_state:
