@@ -16,7 +16,7 @@ RTC_CONFIGURATION = RTCConfiguration({
 
 # Set layout halaman
 st.set_page_config(layout="wide")
-st.title("🧠 Talk To Me – Deteksi Bahasa Isyarat Realtime")
+st.title("Talk To Me")
 
 # State session
 class SessionState:
