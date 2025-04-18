@@ -16,7 +16,7 @@ RTC_CONFIGURATION = RTCConfiguration({
 
 # Setup halaman
 st.set_page_config(layout="wide")
-st.title("Talk To Me")
+st.title("Talk To Me: Pendeteksi Bahasa Isyarat")
 
 # Load model
 @st.cache_resource
