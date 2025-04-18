@@ -26,7 +26,7 @@ def load_model():
     return model
 
 model = load_model()
-class_labels = ["A", "B", "C", "D", "E"]
+class_labels = ["A", "B", "C"]
 
 # Video Processor
 class VideoProcessor(VideoProcessorBase):
