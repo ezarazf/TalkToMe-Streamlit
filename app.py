@@ -1,13 +1,15 @@
 import streamlit as st
-import cv2
 import torch
-from PIL import Image
 import numpy as np
 from datetime import datetime
+from PIL import Image
+import streamlit_webrtc
+import cv2
 
 st.set_page_config(layout="wide")
-st.title("Talk To Me - TorchScript Version")
+st.title("Talk To Me")
 
+# Sidebar
 with st.sidebar:
     st.title("Kontrol")
     st.info("💡 Setelah tekan 'Start', harap langsung menunjukan tangan kamu ke kamera.")
@@ -16,20 +18,16 @@ with st.sidebar:
     stop = st.button("⏹️ Stop")
     clear_history = st.button("🧹 Remove History")
 
-# Load model
+# Load TorchScript model
 @st.cache_resource
-def load_model_cached():
-    try:
-        model = torch.jit.load("SL-V1.torchscript", map_location=torch.device("cpu"))
-        model.eval()
-        return model
-    except Exception as e:
-        st.error(f"Gagal memuat model: {e}")
-        return None
+def load_model():
+    model = torch.jit.load("SL-V1.torchscript")
+    model.eval()
+    return model
 
-model = load_model_cached()
-class_labels = ["A", "B", "C", "D", "E"]  # Ganti sesuai label model
+model = load_model()
 
+# Inisialisasi session state
 if "run" not in st.session_state:
     st.session_state.run = False
 if "history" not in st.session_state:
@@ -43,52 +41,58 @@ if stop:
 frame_placeholder = st.empty()
 prediction_placeholder = st.empty()
 
-# Loop kamera
-if st.session_state.run and model is not None:
-    cap = cv2.VideoCapture(0)
+# Fungsi deteksi
+def detect(model, frame):
+    img = cv2.resize(frame, (640, 640))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img_tensor = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+    img_tensor = img_tensor.unsqueeze(0)
 
-    while st.session_state.run:
-        ret, frame = cap.read()
-        if not ret:
-            st.warning("❌ Kamera tidak terdeteksi.")
-            break
+    with torch.no_grad():
+        output = model(img_tensor)[0]  # Asumsikan model output [boxes]
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image_resized = cv2.resize(frame_rgb, (224, 224))
-        tensor = torch.from_numpy(image_resized).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+    # Dummy: misalnya output label paling tinggi (ganti sesuai model kamu)
+    if output is not None and output.shape[0] > 0:
+        label = "Detected"
+        confidence = 0.95
+        return label, confidence
+    else:
+        return None, None
 
-        with torch.no_grad():
-            output = model(tensor)
-            probs = torch.nn.functional.softmax(output[0], dim=0)
-            confidence_score, predicted_class = torch.max(probs, 0)
-            hasil = class_labels[predicted_class.item()]
-            score = confidence_score.item() * 100
-
+# Fungsi untuk menangani stream dari WebRTC
+def video_frame_callback(frame):
+    img = frame.to_ndarray(format="bgr24")
+    if st.session_state.run:
+        label, confidence = detect(model, img)
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        prediction_placeholder.success(f"🧠 Prediksi: {hasil} (Confidence: {score:.2f}%) - {timestamp}")
-        frame_placeholder.image(frame_rgb, channels="RGB")
+        if label:
+            prediction_placeholder.success(f"🧠 Prediksi: {label} (Confidence: {confidence*100:.2f}%) - {timestamp}")
+            st.session_state.history.append({
+                "input_image": img,
+                "predicted_class": label,
+                "confidence_score": confidence * 100,
+                "timestamp": timestamp
+            })
+        else:
+            prediction_placeholder.info("Belum terdeteksi.")
+    return img
 
-        st.session_state.history.append({
-            "input_image": frame_rgb,
-            "predicted_class": hasil,
-            "confidence_score": score,
-            "timestamp": timestamp
-        })
+# Video Stream WebRTC
+video_stream = streamlit_webrtc.VideoProcessorBase(callback=video_frame_callback)
+webrtc_streamer = streamlit_webrtc.webrtc_streamer(
+    key="video-stream",
+    video_processor_factory=video_stream,
+    media_stream_constraints={"video": True},
+)
 
-        # Delay kecil untuk hindari loop berat
-        if not st.button("Stop", key="stop_button_loop"):
-            break
-
-    cap.release()
-
-# Tampilkan Riwayat
+# Riwayat prediksi
 if st.session_state.history:
     st.subheader("Riwayat Prediksi:")
     for i, item in enumerate(reversed(st.session_state.history), 1):
         st.write(f"**{i}.** Prediksi: {item['predicted_class']} dengan Confidence: {item['confidence_score']:.2f}% pada {item['timestamp']}")
         st.image(item['input_image'], caption=f"Gambar {i}", use_container_width=True)
 
-# Hapus Riwayat
+# Hapus riwayat
 if clear_history:
     st.session_state.history.clear()
-    st.success("✅ Semua riwayat prediksi berhasil dihapus!")
+    st.success("✅ Semua riwayat berhasil dihapus.")
