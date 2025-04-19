@@ -30,7 +30,7 @@ class VideoProcessor(VideoProcessorBase):
         h, w, _ = img.shape
 
         # Resize dan normalisasi
-        img_resized = cv2.resize(img, (224, 224))
+        img_resized = cv2.resize(img, (180, 180))
         img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
         img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
         tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
