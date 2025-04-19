@@ -93,7 +93,8 @@ webrtc_ctx = webrtc_streamer(
     mode=WebRtcMode.SENDRECV,
     video_processor_factory=SignLanguageProcessor,
     media_stream_constraints={"video": True, "audio": False},
-    async_processing=True
+    async_processing=True,
+    rtc_configuration=rtc_config  # <-- Tambahkan ini
 )
 
 # Tampilkan hasil
