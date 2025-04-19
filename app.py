@@ -12,7 +12,7 @@ from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase, RT
 logger = logging.getLogger(__name__)
 
 # Setup halaman
-st.title("🎥 Talk To Me: Penerjemah Bahasa Isyarat Real-Time")
+st.title("Talk To Me: Penerjemah Bahasa Isyarat Real-Time")
 st.markdown("""
     **Aplikasi penerjemah bahasa isyarat menggunakan AI**  
     *Arahkan tangan Anda dalam kotak kamera untuk menerjemahkan ke bahasa isyarat*
