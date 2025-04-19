@@ -52,7 +52,7 @@ class SignLanguageProcessor(VideoProcessorBase):
 
 # Stream video
 rtc_config = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
 
 webrtc_ctx = webrtc_streamer(
