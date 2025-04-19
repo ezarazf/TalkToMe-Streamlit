@@ -25,11 +25,11 @@ def load_model():
 model = load_model()
 class_labels = ["A", "B", "C"]
 
-# Video Processor dengan penyimpanan hasil
+# Video Processor dengan sistem buffer
 class SignLanguageProcessor(VideoProcessorBase):
     def __init__(self):
         self.model = model
-        self.result_queue = queue.Queue(maxsize=5)  # Buffer 5 hasil terakhir
+        self.last_prediction = None
     
     def _preprocess(self, img):
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -42,30 +42,26 @@ class SignLanguageProcessor(VideoProcessorBase):
         img = frame.to_ndarray(format="bgr24")
         
         try:
-            # Preprocessing dan inference
             tensor = self._preprocess(img)
             with torch.no_grad():
                 outputs = self.model(tensor)
                 probs = torch.nn.functional.softmax(outputs, dim=1)
                 conf, pred = torch.max(probs, 1)
             
-            # Simpan hasil terbaru
-            result = {
+            self.last_prediction = {
                 "label": class_labels[pred.item()],
                 "confidence": conf.item() * 100,
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
-            
-            self.result_queue.put(result)
             
         except Exception as e:
             st.error(f"Error processing frame: {str(e)}")
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# Stream video
+# Stream video config
 rtc_config = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
 )
 
 webrtc_ctx = webrtc_streamer(
@@ -77,33 +73,17 @@ webrtc_ctx = webrtc_streamer(
     rtc_configuration=rtc_config
 )
 
-# Tampilkan hasil prediksi
+# Tampilkan hasil
 if webrtc_ctx.video_processor:
-    result_placeholder = st.empty()
-    
-    # Inisialisasi state untuk hasil
-    if 'latest_result' not in st.session_state:
-        st.session_state.latest_result = None
-    
-    # Ambil hasil terbaru
-    try:
-        latest_result = webrtc_ctx.video_processor.result_queue.get_nowait()
-        st.session_state.latest_result = latest_result
-    except queue.Empty:
-        pass
-    
-    # Tampilkan hasil
-    if st.session_state.latest_result:
-        result_placeholder.markdown(f"""
-        ### 🎯 Hasil Prediksi Terbaru
-        **Waktu**: {st.session_state.latest_result['timestamp']}  
-        **Huruf**: {st.session_state.latest_result['label']}  
-        **Akurasi**: {st.session_state.latest_result['confidence']:.1f}%
+    if hasattr(webrtc_ctx.video_processor, 'last_prediction') and webrtc_ctx.video_processor.last_prediction:
+        prediction = webrtc_ctx.video_processor.last_prediction
+        st.markdown(f"""
+        ### 🎯 Hasil Prediksi
+        **Waktu**: {prediction['timestamp']}  
+        **Huruf**: {prediction['label']}  
+        **Akurasi**: {prediction['confidence']:.1f}%
         """)
     else:
-        result_placeholder.info("🔄 Menunggu frame pertama...")
+        st.info("🔄 Sedang memproses...")
 else:
     st.info("✅ Silakan aktifkan kamera untuk memulai deteksi")
-
-# Auto-refresh setiap 1 detik
-st_autorefresh(interval=1000, key="refresh")
