@@ -12,7 +12,7 @@ st.title("Talk To Me: Pendeteksi Bahasa Isyarat")
 # Load model
 @st.cache_resource
 def load_model():
-    model = torch.load("model/SL-V1.pt", map_location="cpu")
+    model = torch.load("SL-V1.pt", map_location="cpu")
     model.eval()
     return model
 
