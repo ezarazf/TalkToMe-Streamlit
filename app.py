@@ -79,13 +79,10 @@ webrtc_ctx = webrtc_streamer(
 )
 
 # Tampilkan prediksi teks (opsional)
-# Tampilkan prediksi teks (opsional)
-if webrtc_ctx and webrtc_ctx.state.playing and hasattr(webrtc_ctx, "video_processor") and webrtc_ctx.video_processor:
+if webrtc_ctx.video_processor:
     result = webrtc_ctx.video_processor.latest_result
     if result is not None:
         st.markdown("### 🔍 Prediksi")
         st.info(f"{result['waktu']} – {result['label']} ({result['confidence']:.1f}%)")
     else:
         st.info("🧐 Prediksi masih dalam proses...")
-else:
-    st.info("🕐 Menunggu video aktif...")
