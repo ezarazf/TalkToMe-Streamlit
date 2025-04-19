@@ -6,7 +6,7 @@ import numpy as np
 import streamlit as st
 import torch
 from datetime import datetime
-from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase
+from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -83,13 +83,6 @@ class SignLanguageProcessor(VideoProcessorBase):
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-from streamlit_webrtc import (
-    WebRtcMode,
-    webrtc_streamer,
-    VideoProcessorBase,
-    RTCConfiguration  # <-- Tambahkan ini
-)
-
 # Stream video
 rtc_config = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
@@ -101,7 +94,7 @@ webrtc_ctx = webrtc_streamer(
     video_processor_factory=SignLanguageProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
-    rtc_configuration=rtc_config  # Pastikan parameter ini ada
+    rtc_configuration=rtc_config
 )
 
 # Tampilkan hasil
@@ -123,13 +116,3 @@ if webrtc_ctx.video_processor:
             
         except queue.Empty:
             continue
-
-st.markdown("""
-<style>
-div[data-testid="stExpander"] div:first-child {
-    background-color: #f0f2f6;
-    padding: 10px;
-    border-radius: 5px;
-}
-</style>
-""", unsafe_allow_html=True)
