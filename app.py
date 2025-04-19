@@ -68,16 +68,17 @@ class VideoProcessor(VideoProcessorBase):
 webrtc_ctx = webrtc_streamer(
     key="object-detection",
     mode=WebRtcMode.SENDRECV,
-    video_frame_callback=video_frame_callback,
+    video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
 
 # Tampilkan prediksi teks (opsional)
-if ctx.video_processor:
-    result = ctx.video_processor.latest_result
+if webrtc_ctx.video_processor:
+    result = webrtc_ctx.video_processor.latest_result
     if result is not None:
         st.markdown("### 🔍 Prediksi")
         st.info(f"{result['waktu']} – *{result['label']}* ({result['confidence']:.1f}%)")
     else:
         st.info("🧐 Prediksi masih dalam proses...")
+
