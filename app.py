@@ -65,12 +65,17 @@ class VideoProcessor(VideoProcessorBase):
         return img  # Pastikan mengembalikan frame hasil edit
 
 # Stream video
+rtc_config = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
 webrtc_ctx = webrtc_streamer(
-    key="object-detection",
+    key="sign-language",
     mode=WebRtcMode.SENDRECV,
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
+    rtc_configuration=rtc_config  # Tambahkan ini
 )
 
 # Tampilkan prediksi teks (opsional)
