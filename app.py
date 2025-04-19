@@ -11,6 +11,15 @@ from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase, RT
 # Setup logging
 logger = logging.getLogger(__name__)
 
+# Setup halaman
+st.set_page_config(page_title="Talk To Me", layout="wide")
+st.title("🎥 Talk To Me: Penerjemah Bahasa Isyarat Real-Time")
+st.markdown("""
+    **Aplikasi penerjemah bahasa isyarat menggunakan AI**  
+    *Arahkan tangan Anda dalam kotak kamera untuk menerjemahkan ke bahasa isyarat*
+""")
+st.divider()
+
 # Load model
 @st.cache_resource
 def load_model():
