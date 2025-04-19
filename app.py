@@ -83,6 +83,13 @@ class SignLanguageProcessor(VideoProcessorBase):
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
+from streamlit_webrtc import (
+    WebRtcMode,
+    webrtc_streamer,
+    VideoProcessorBase,
+    RTCConfiguration  # <-- Tambahkan ini
+)
+
 # Stream video
 rtc_config = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
@@ -94,7 +101,7 @@ webrtc_ctx = webrtc_streamer(
     video_processor_factory=SignLanguageProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
-    rtc_configuration=rtc_config  # <-- Tambahkan ini
+    rtc_configuration=rtc_config  # Pastikan parameter ini ada
 )
 
 # Tampilkan hasil
