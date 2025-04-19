@@ -1,6 +1,5 @@
-streamlit==1.32.2
-torch==2.2.2
-opencv-python==4.9.0.80
-numpy==1.26.4
-requests==2.31.0
-streamlit-webrtc==0.45.0
+streamlit
+torch
+opencv-python
+numpy
+streamlit-webrtc
