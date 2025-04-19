@@ -1,5 +1,6 @@
 import streamlit as st
 import torch
+import os
 import cv2
 import numpy as np
 from datetime import datetime
@@ -9,90 +10,82 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 st.set_page_config(layout="wide")
 st.title("Talk To Me: Pendeteksi Bahasa Isyarat")
 
-# URL model dan path lokal
-MODEL_URL = "https://path_to_your_model/SL-V1.pt"  # Ganti dengan URL file model yang sesuai
+# Path model
 MODEL_PATH = "model/SL-V1.pt"
 
-# Fungsi untuk mengunduh model jika belum ada
-import os
-import urllib.request
+# Cek apakah model ada
+if not os.path.exists(MODEL_PATH):
+    st.error(f"Model tidak ditemukan di path {MODEL_PATH}. Pastikan file model sudah ada.")
+else:
+    # Load model
+    @st.cache_resource
+    def load_model():
+        model = torch.load(MODEL_PATH, map_location="cpu")
+        model.eval()
+        return model
 
-def download_model(url, model_path):
-    if not os.path.exists(model_path):
-        urllib.request.urlretrieve(url, model_path)
+    model = load_model()
+    class_labels = ["A", "B", "C"]  # Update dengan kelas model yang sesuai
 
-# Unduh model jika diperlukan
-download_model(MODEL_URL, MODEL_PATH)
+    # Video Processor
+    class VideoProcessor(VideoProcessorBase):
+        def __init__(self):
+            self.model = model
+            self.latest_result = None
 
-# Load model
-@st.cache_resource
-def load_model():
-    model = torch.load(MODEL_PATH, map_location="cpu")
-    model.eval()
-    return model
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+            h, w, _ = img.shape
 
-model = load_model()
-class_labels = ["A", "B", "C"]  # Update dengan kelas model yang sesuai
+            # Resize dan normalisasi
+            img_resized = cv2.resize(img, (180, 180))  # Sesuaikan dengan ukuran model
+            img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+            img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+            tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
 
-# Video Processor
-class VideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.model = model
-        self.latest_result = None
+            with torch.no_grad():
+                outputs = self.model(tensor)
+                probs = torch.nn.functional.softmax(outputs, dim=1)
+                conf, pred = torch.max(probs, 1)
 
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        h, w, _ = img.shape
+            label = class_labels[pred.item()]
+            confidence = conf.item() * 100
 
-        # Resize dan normalisasi
-        img_resized = cv2.resize(img, (180, 180))  # Sesuaikan dengan ukuran model
-        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-        img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
-        tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
+            # Simpan hasil prediksi
+            self.latest_result = {
+                "label": label,
+                "confidence": confidence,
+                "waktu": datetime.now().strftime("%H:%M:%S")
+            }
 
-        with torch.no_grad():
-            outputs = self.model(tensor)
-            probs = torch.nn.functional.softmax(outputs, dim=1)
-            conf, pred = torch.max(probs, 1)
+            # Tambahkan overlay kotak + label di frame
+            box_w, box_h = 200, 200
+            x1 = w // 2 - box_w // 2
+            y1 = h // 2 - box_h // 2
+            x2 = x1 + box_w
+            y2 = y1 + box_h
 
-        label = class_labels[pred.item()]
-        confidence = conf.item() * 100
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label_text = f"{label} ({confidence:.1f}%)"
+            cv2.putText(img, label_text, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-        # Simpan hasil prediksi
-        self.latest_result = {
-            "label": label,
-            "confidence": confidence,
-            "waktu": datetime.now().strftime("%H:%M:%S")
-        }
+            return img  # Pastikan mengembalikan frame hasil edit
 
-        # Tambahkan overlay kotak + label di frame
-        box_w, box_h = 200, 200
-        x1 = w // 2 - box_w // 2
-        y1 = h // 2 - box_h // 2
-        x2 = x1 + box_w
-        y2 = y1 + box_h
+    # Stream video
+    webrtc_ctx = webrtc_streamer(
+        key="object-detection",
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=VideoProcessor().recv,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
 
-        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        label_text = f"{label} ({confidence:.1f}%)"
-        cv2.putText(img, label_text, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-        return img  # Pastikan mengembalikan frame hasil edit
-
-# Stream video
-webrtc_ctx = webrtc_streamer(
-    key="object-detection",
-    mode=WebRtcMode.SENDRECV,
-    video_frame_callback=VideoProcessor().recv,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,
-)
-
-# Tampilkan prediksi teks (opsional)
-if webrtc_ctx.video_processor:
-    result = webrtc_ctx.video_processor.latest_result
-    if result is not None:
-        st.markdown("### 🔍 Prediksi")
-        st.info(f"{result['waktu']} – *{result['label']}* ({result['confidence']:.1f}%)")
-    else:
-        st.info("🧐 Prediksi masih dalam proses...")
+    # Tampilkan prediksi teks (opsional)
+    if webrtc_ctx.video_processor:
+        result = webrtc_ctx.video_processor.latest_result
+        if result is not None:
+            st.markdown("### 🔍 Prediksi")
+            st.info(f"{result['waktu']} – *{result['label']}* ({result['confidence']:.1f}%)")
+        else:
+            st.info("🧐 Prediksi masih dalam proses...")
