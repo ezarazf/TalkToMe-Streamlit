@@ -3,16 +3,31 @@ import torch
 import cv2
 import numpy as np
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
 
 # Setup halaman
 st.set_page_config(layout="wide")
 st.title("Talk To Me: Pendeteksi Bahasa Isyarat")
 
+# URL model dan path lokal
+MODEL_URL = "https://path_to_your_model/SL-V1.pt"  # Ganti dengan URL file model yang sesuai
+MODEL_PATH = "model/SL-V1.pt"
+
+# Fungsi untuk mengunduh model jika belum ada
+import os
+import urllib.request
+
+def download_model(url, model_path):
+    if not os.path.exists(model_path):
+        urllib.request.urlretrieve(url, model_path)
+
+# Unduh model jika diperlukan
+download_model(MODEL_URL, MODEL_PATH)
+
 # Load model
 @st.cache_resource
 def load_model():
-    model = torch.load("model/SL-V1.pt", map_location="cpu")
+    model = torch.load(MODEL_PATH, map_location="cpu")
     model.eval()
     return model
 
