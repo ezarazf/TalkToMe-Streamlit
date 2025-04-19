@@ -1,13 +1,15 @@
-import streamlit as st
-import torch
+import logging
+import queue
+import av
 import cv2
 import numpy as np
+import streamlit as st
+import torch
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
+from streamlit_webrtc import WebRtcMode, webrtc_streamer, VideoProcessorBase
 
-# Setup halaman
-st.set_page_config(layout="wide")
-st.title("Talk To Me: Pendeteksi Bahasa Isyarat")
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Load model
 @st.cache_resource
@@ -17,72 +19,105 @@ def load_model():
     return model
 
 model = load_model()
-class_labels = ["A", "B", "C"]
+class_labels = ["A", "B", "C"]  # Sesuaikan dengan kelas model Anda
+
+# Session state untuk menyimpan hasil
+if 'latest_result' not in st.session_state:
+    st.session_state.latest_result = None
 
 # Video Processor
-class VideoProcessor(VideoProcessorBase):
+class SignLanguageProcessor(VideoProcessorBase):
     def __init__(self):
-        super().__init__()
         self.model = model
+        self.result_queue = queue.Queue()
+    
+    def _preprocess(self, img):
+        # Convert BGR to RGB
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
+        # Resize ke 180x180
+        img_resized = cv2.resize(img_rgb, (180, 180))
+        
+        # Normalisasi
+        img_normalized = (img_resized / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+        
+        # Convert ke tensor
+        tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
+        return tensor
+
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        h, w, _ = img.shape
-
-        # Resize dan normalisasi
-        img_resized = cv2.resize(img, (180, 180))
-        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-        img_normalized = (img_rgb / 255.0 - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
-        tensor = torch.from_numpy(img_normalized).permute(2, 0, 1).unsqueeze(0).float()
-
+        h, w = img.shape[:2]
+        
+        # Preprocessing
+        tensor = self._preprocess(img)
+        
+        # Inference
         with torch.no_grad():
             outputs = self.model(tensor)
             probs = torch.nn.functional.softmax(outputs, dim=1)
             conf, pred = torch.max(probs, 1)
-
+        
         label = class_labels[pred.item()]
         confidence = conf.item() * 100
-
-        # Simpan hasil ke session state
-        st.session_state.latest_result = {
+        
+        # Gambar bounding box di tengah
+        box_size = 180  # Ukuran sesuai input model
+        x1 = w//2 - box_size//2
+        y1 = h//2 - box_size//2
+        x2 = x1 + box_size
+        y2 = y1 + box_size
+        
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(img, f"{label} ({confidence:.1f}%)", 
+                    (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 
+                    0.7, (0, 255, 0), 2)
+        
+        # Simpan hasil ke queue
+        result = {
             "label": label,
             "confidence": confidence,
-            "waktu": datetime.now().strftime("%H:%M:%S")
+            "timestamp": datetime.now().isoformat()
         }
-
-        # Gambar bounding box dan label
-        box_w, box_h = 200, 200
-        x1 = w//2 - box_w//2
-        y1 = h//2 - box_h//2
-        cv2.rectangle(img, (x1, y1), (x1+box_w, y1+box_h), (0,255,0), 2)
-        cv2.putText(img, 
-                   f"{label} ({confidence:.1f}%)", 
-                   (x1, y1-10), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 
-                   0.9, (0,255,0), 2)
-
-        return img
+        self.result_queue.put(result)
+        
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # Stream video
-rtc_config = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-)
-
-webrtc_streamer(
-    key="example",
+webrtc_ctx = webrtc_streamer(
+    key="sign-language",
     mode=WebRtcMode.SENDRECV,
-    video_processor_factory=VideoProcessor,
-    rtc_configuration=rtc_config,
+    video_processor_factory=SignLanguageProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True
 )
 
-# Tampilkan hasil prediksi
-if "latest_result" in st.session_state:
-    result = st.session_state.latest_result
-    st.markdown("### 🔍 Hasil Prediksi Terbaru")
-    st.success(f"Waktu: {result['waktu']}")
-    st.success(f"Prediksi: {result['label']}")
-    st.success(f"Confidence: {result['confidence']:.1f}%")
-else:
-    st.info("🎥 Silakan mulai kamera untuk melihat prediksi...")
+# Tampilkan hasil
+if webrtc_ctx.video_processor:
+    result_container = st.empty()
+    
+    while True:
+        try:
+            result = webrtc_ctx.video_processor.result_queue.get(timeout=1.0)
+            st.session_state.latest_result = result
+            
+            # Update tampilan hasil
+            result_container.markdown(f"""
+            ### Hasil Prediksi Terbaru
+            - **Waktu**: `{result['timestamp']}`
+            - **Label**: `{result['label']}`
+            - **Confidence**: `{result['confidence']:.2f}%`
+            """)
+            
+        except queue.Empty:
+            continue
+
+st.markdown("""
+<style>
+div[data-testid="stExpander"] div:first-child {
+    background-color: #f0f2f6;
+    padding: 10px;
+    border-radius: 5px;
+}
+</style>
+""", unsafe_allow_html=True)
