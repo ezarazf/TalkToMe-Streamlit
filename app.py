@@ -91,39 +91,18 @@ from streamlit_webrtc import (
 )
 
 # Stream video
+rtc_config = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
 webrtc_ctx = webrtc_streamer(
     key="sign-language",
     mode=WebRtcMode.SENDRECV,
     video_processor_factory=SignLanguageProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
-    rtc_configuration=RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
+    rtc_configuration=rtc_config  # Pastikan parameter ini ada
 )
-
-# Tampilkan hasil
-if webrtc_ctx.video_processor:
-    result_container = st.empty()
-    
-    # Cek apakah ada hasil baru
-    try:
-        result = webrtc_ctx.video_processor.result_queue.get_nowait()
-        st.session_state.latest_result = result
-        result_container.markdown(f"""
-        ### 🎯 Hasil Prediksi Terbaru
-        **Waktu**: `{result['timestamp']}`  
-        **Huruf**: `{result['label']}`  
-        **Akurasi**: `{result['confidence']:.2f}%`
-        """)
-    except queue.Empty:
-        if 'latest_result' in st.session_state:
-            result_container.markdown(f"""
-            ### 🎯 Hasil Prediksi Terakhir
-            **Waktu**: `{st.session_state.latest_result['timestamp']}`  
-            **Huruf**: `{st.session_state.latest_result['label']}`  
-            **Akurasi**: `{st.session_state.latest_result['confidence']:.2f}%`
-            """)
-else:
-    st.info("✅ Silakan aktifkan kamera untuk memulai deteksi...")
 
 # Tampilkan hasil
 if webrtc_ctx.video_processor:
