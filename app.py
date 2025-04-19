@@ -21,9 +21,10 @@ class_labels = ["A", "B", "C"]
 
 # Video Processor
 class VideoProcessor(VideoProcessorBase):
-    def _init_(self):
+    def __init__(self):  # Perbaiki penulisan __init__
+        super().__init__()  # Tambahkan super() jika diperlukan
         self.model = model
-        self.latest_result = None
+        self.latest_result = None  # Inisialisasi variabel
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -75,13 +76,13 @@ webrtc_ctx = webrtc_streamer(
     video_processor_factory=VideoProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
-    rtc_configuration=rtc_config  # Tambahkan ini
+    rtc_configuration=rtc_config
 )
 
-# Tampilkan prediksi teks (opsional)
+# Tampilkan prediksi teks
 if webrtc_ctx.video_processor:
     result = webrtc_ctx.video_processor.latest_result
-    if result is not None:
+    if result:
         st.markdown("### 🔍 Prediksi")
         st.info(f"{result['waktu']} – {result['label']} ({result['confidence']:.1f}%)")
     else:
